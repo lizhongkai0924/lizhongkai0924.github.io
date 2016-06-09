@@ -1,0 +1,559 @@
+
+ <!DOCTYPE HTML>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  
+    <title>深入理解JVM之垃圾回收 | 挚爱左岸</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1,user-scalable=no">
+    
+    <meta name="author" content="Li Zhong Kai">
+    
+
+    
+    <meta name="description" content="对象的判定　　Java堆中存放着几乎所有的对象实例，垃圾收集器对堆中的对象进行回收前，要先确定这些对象是否还有用，判定对象是否为垃圾对象有如下算法：
+1、引用计数法　　引用计数是垃圾收集器中的早期策略。在这种方法中，堆中每个对象（不是引用）都有一个引用计数。对于一个对象 A，只要有任何一个对象引用了 A，则 A 的引用计数器就加 1，当引用失效时，引用计数器就减 1。只要对象 A 的引用计数器的值">
+<meta property="og:type" content="article">
+<meta property="og:title" content="深入理解JVM之垃圾回收">
+<meta property="og:url" content="http://yoursite.com/2016/05/07/垃圾回收/index.html">
+<meta property="og:site_name" content="挚爱左岸">
+<meta property="og:description" content="对象的判定　　Java堆中存放着几乎所有的对象实例，垃圾收集器对堆中的对象进行回收前，要先确定这些对象是否还有用，判定对象是否为垃圾对象有如下算法：
+1、引用计数法　　引用计数是垃圾收集器中的早期策略。在这种方法中，堆中每个对象（不是引用）都有一个引用计数。对于一个对象 A，只要有任何一个对象引用了 A，则 A 的引用计数器就加 1，当引用失效时，引用计数器就减 1。只要对象 A 的引用计数器的值">
+<meta property="og:image" content="http://7xtmiv.com2.z0.glb.clouddn.com/%E6%A0%87%E8%AE%B0-%E6%B8%85%E9%99%A4.png">
+<meta property="og:image" content="http://7xtmiv.com2.z0.glb.clouddn.com/%E5%A4%8D%E5%88%B6.png">
+<meta property="og:image" content="http://7xtmiv.com2.z0.glb.clouddn.com/%E6%A0%87%E8%AE%B0-%E6%95%B4%E7%90%86.png">
+<meta property="og:image" content="http://7xtmiv.com2.z0.glb.clouddn.com/%E5%9E%83%E5%9C%BE%E6%94%B6%E9%9B%86%E5%99%A8.png">
+<meta property="og:image" content="http://7xtmiv.com2.z0.glb.clouddn.com/serial.jpg">
+<meta property="og:image" content="http://7xtmiv.com2.z0.glb.clouddn.com/ParNew.jpg">
+<meta property="og:image" content="http://7xtmiv.com2.z0.glb.clouddn.com/parallel%20Scavenge.jpg">
+<meta property="og:image" content="http://7xtmiv.com2.z0.glb.clouddn.com/cms.jpg">
+<meta property="og:image" content="http://7xtmiv.com2.z0.glb.clouddn.com/G1.jpg">
+<meta property="og:updated_time" content="2016-05-07T05:50:22.422Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="深入理解JVM之垃圾回收">
+<meta name="twitter:description" content="对象的判定　　Java堆中存放着几乎所有的对象实例，垃圾收集器对堆中的对象进行回收前，要先确定这些对象是否还有用，判定对象是否为垃圾对象有如下算法：
+1、引用计数法　　引用计数是垃圾收集器中的早期策略。在这种方法中，堆中每个对象（不是引用）都有一个引用计数。对于一个对象 A，只要有任何一个对象引用了 A，则 A 的引用计数器就加 1，当引用失效时，引用计数器就减 1。只要对象 A 的引用计数器的值">
+<meta name="twitter:image" content="http://7xtmiv.com2.z0.glb.clouddn.com/%E6%A0%87%E8%AE%B0-%E6%B8%85%E9%99%A4.png">
+
+    
+    <link rel="alternative" href="/atom.xml" title="挚爱左岸" type="application/atom+xml">
+    
+    
+    <link rel="icon" href="/img/favicon.ico">
+    
+    
+    <link rel="apple-touch-icon" href="/img/jacman.jpg">
+    <link rel="apple-touch-icon-precomposed" href="/img/jacman.jpg">
+    
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+  <body>
+    <header>
+      
+<div>
+		
+			<div id="imglogo">
+				<a href="/"><img src="/img/logo.png" alt="挚爱左岸" title="挚爱左岸"/></a>
+			</div>
+			
+			<div id="textlogo">
+				<h1 class="site-name"><a href="/" title="挚爱左岸">挚爱左岸</a></h1>
+				<h2 class="blog-motto">每一个你不满意的现在，都有一个你没有努力的曾经。</h2>
+			</div>
+			<div class="navbar"><a class="navbutton navmobile" href="#" title="菜单">
+			</a></div>
+			<nav class="animated">
+				<ul>
+					<ul>
+					 
+						<li><a href="/">首页</a></li>
+					
+						<li><a href="/archives">分类</a></li>
+					
+						<li><a href="/">关于</a></li>
+					
+					<li>
+ 					
+					<form class="search" action="//google.com/search" method="get" accept-charset="utf-8">
+						<label>Search</label>
+						<input type="search" id="search" name="q" autocomplete="off" maxlength="20" placeholder="搜索" />
+						<input type="hidden" name="q" value="site:yoursite.com">
+					</form>
+					
+					</li>
+				</ul>
+			</nav>			
+</div>
+    </header>
+    <div id="container">
+      <div id="main" class="post" itemscope itemprop="blogPost">
+  
+	<article itemprop="articleBody"> 
+		<header class="article-info clearfix">
+  <h1 itemprop="name">
+    
+      <a href="/2016/05/07/垃圾回收/" title="深入理解JVM之垃圾回收" itemprop="url">深入理解JVM之垃圾回收</a>
+  </h1>
+  <p class="article-author">By
+       
+		<a href="/about" title="Li Zhong Kai" target="_blank" itemprop="author">Li Zhong Kai</a>
+		
+  <p class="article-time">
+    <time datetime="2016-05-07T05:15:03.000Z" itemprop="datePublished"> 发表于 2016-05-07</time>
+    
+  </p>
+</header>
+	<div class="article-content">
+		
+		<div id="toc" class="toc-article">
+			<strong class="toc-title">文章目录</strong>
+		
+			<ol class="toc"><li class="toc-item toc-level-3"><a class="toc-link" href="#对象的判定"><span class="toc-number">1.</span> <span class="toc-text">对象的判定</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#引用的类型"><span class="toc-number">2.</span> <span class="toc-text">引用的类型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#垃圾收集算法"><span class="toc-number">3.</span> <span class="toc-text">垃圾收集算法</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#标记-清除算法（Mark-Sweep）"><span class="toc-number">3.1.</span> <span class="toc-text">标记-清除算法（Mark-Sweep）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#复制算法（Coping）"><span class="toc-number">3.2.</span> <span class="toc-text">复制算法（Coping）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#标记-整理算法（Mark-Compact）"><span class="toc-number">3.3.</span> <span class="toc-text">标记-整理算法（Mark-Compact）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#分代收集算法"><span class="toc-number">3.4.</span> <span class="toc-text">分代收集算法</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#垃圾收集器"><span class="toc-number">4.</span> <span class="toc-text">垃圾收集器</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#Serial收集器"><span class="toc-number">4.1.</span> <span class="toc-text">Serial收集器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#ParNew收集器"><span class="toc-number">4.2.</span> <span class="toc-text">ParNew收集器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Parallel-Scavenge-收集器"><span class="toc-number">4.3.</span> <span class="toc-text">Parallel Scavenge 收集器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Serial-Old收集器"><span class="toc-number">4.4.</span> <span class="toc-text">Serial Old收集器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Parallel-Old-收集器"><span class="toc-number">4.5.</span> <span class="toc-text">Parallel Old 收集器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#CMS收集器"><span class="toc-number">4.6.</span> <span class="toc-text">CMS收集器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#G1收集器"><span class="toc-number">4.7.</span> <span class="toc-text">G1收集器</span></a></li></ol></li></ol>
+		
+		</div>
+		
+		<h3 id="对象的判定"><a href="#对象的判定" class="headerlink" title="对象的判定"></a>对象的判定</h3><p>　　Java堆中存放着几乎所有的对象实例，垃圾收集器对堆中的对象进行回收前，要先确定这些对象是否还有用，判定对象是否为垃圾对象有如下算法：</p>
+<p>1、引用计数法<br>　　引用计数是垃圾收集器中的早期策略。在这种方法中，堆中每个对象（不是引用）都有一个引用计数。对于一个对象 A，只要有任何一个对象引用了 A，则 A 的引用计数器就加 1，当引用失效时，引用计数器就减 1。只要对象 A 的引用计数器的值为 0，则对象 A 就不可能再被使用。<br>　　引用计数法实现简单，判定效率也很高。但是这个算法有明显的缺陷，对于循环引用的情况下，循环引用的对象就不会被回收。如A=B,B=A, 此时，对象 A 和对象 B 的引用计数器都不为 0。但是在系统中却不存在任何第 3 个对象引用了 A 或 B。也就是说，A 和 B 是应该被回收的垃圾对象，但由于垃圾对象间相互引用，从而使垃圾回收器无法识别，引起内存泄漏。<br>2、根搜索算法<br>　　这种算法的基本思路是通过一系列名为“GC Roots”的对象作为起始点，从这些节点开始向下搜索，搜索所走过的路径称为引用链，当一个对象到GC Roots没有任何引用链相连时，就证明此对象是不可用的。在Java语言里，可作为GC Roots的对象包括下面几种：<br>•    虚拟机栈（栈帧中的本地变量表）中引用的对象。<br>•    方法区中的类静态属性引用的对象。<br>•    方法区中的常量引用的对象。<br>•    本地方法栈中JNI（Native方法）的引用对象。</p>
+<h3 id="引用的类型"><a href="#引用的类型" class="headerlink" title="引用的类型"></a>引用的类型</h3><p>　　无论是通过引用计数算法判断对象的引用数量，还是通过根搜索算法判断对象的引用链是否可达，判断对象是否存活都与“引用有关”。一般的引用类型分为强引用（ Strong Reference）、软引用（ Soft Reference）、弱引用（ Weak Reference）、虚引用（ Phantom Reference）四种，这四种引用强度依次逐渐减弱。<br>　　1、强引用就是指在程序代码之中普遍存在的，类似“Object obj = new Object()”这类的引用，只要强引用还存在，垃圾收集器永远不会回收掉被引用的对象。当内存空间不足，Java虚拟机宁愿抛出OutOfMemoryError错误，使程序异常终止，也不会靠随意回收具有强引用的对象来解决内存不足的问题。如果不使用时，可以赋值obj=null，显示的设置obj为null，则gc认为该对象不存在引用，这时候就可以回收此对象。<br>强引用在实际应用中非常常见，集合类中的clear（）方法就用到了强引用，下面看一下hashmap中clear（）方法的源代码：<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">transient</span> Node&lt;K,V&gt;[] table;</span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">clear</span><span class="params">()</span> </span>&#123;</span><br><span class="line">        Node&lt;K,V&gt;[] tab;</span><br><span class="line">        modCount++;</span><br><span class="line">        <span class="keyword">if</span> ((tab = table) != <span class="keyword">null</span> &amp;&amp; size &gt; <span class="number">0</span>) &#123;</span><br><span class="line">            size = <span class="number">0</span>;</span><br><span class="line">            <span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; tab.length; ++i)</span><br><span class="line">                tab[i] = <span class="keyword">null</span>;</span><br><span class="line">        &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>　　在HashMap类中定义了一个table数组，在调用clear（）方法清空数组时可以看到为每个数组内容赋值为null。不同于table=null，强引用仍然存在，避免在其他方法用到数组时重新的内存分配。使用如clear()方法中释放内存的方法对数组中存放的引用类型特别适用，这样就可以及时释放内存。</p>
+<p>　　2、软引用用来描述一些还有用，但并非必需的对象。对于软引用关联着的对象，如果内存充足，则垃圾回收器不会回收该对象，如果内存不够了，就会回收这些对象的内存。在 JDK 1.2 之后，提供了 SoftReference 类来实现软引用。软引用可用来实现内存敏感的高速缓存。软引用可以和一个引用队列（ReferenceQueue）联合使用，如果软引用所引用的对象被垃圾回收器回收，Java虚拟机就会把这个软引用加入到与之关联的引用队列中。<br>　　软引用主要应用于内存敏感的高速缓存，在android系统中经常使用到。一般情况下，Android应用会用到大量的默认图片，这些图片很多地方会用到。如果每次都去读取图片，由于读取文件需要硬件操作，速度较慢，会导致性能较低。所以我们考虑将图片缓存起来，需要的时候直接从内存中读取。但是，由于图片占用内存空间比较大，缓存很多图片需要很多的内存，就可能比较容易发生OutOfMemory异常。这时，我们可以考虑使用软引用技术来避免这个问题发生。SoftReference可以解决oom的问题，每一个对象通过软引用进行实例化，这个对象就以cache的形式保存起来，当再次调用这个对象时，那么直接通过软引用中的get（）方法，就可以得到对象中中的资源数据，这样就没必要再次进行读取了，直接从cache中就可以读取得到，当内存将要发生OOM的时候，GC会迅速把所有的软引用清除，防止oom发生。<br>下面看一段简单的代码：<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">BitMapManager</span> </span>&#123;</span><br><span class="line">	<span class="keyword">private</span> Map&lt;String, SoftReference&lt;Bitmap&gt;&gt; imageCache = <span class="keyword">new</span> HashMap&lt;String, SoftReference&lt;Bitmap&gt;&gt;();</span><br><span class="line"></span><br><span class="line">	<span class="comment">//保存Bitmap的软引用到HashMap</span></span><br><span class="line">	<span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">saveBitmapToCache</span><span class="params">(String path)</span> </span>&#123;</span><br><span class="line">		<span class="comment">// 强引用的Bitmap对象</span></span><br><span class="line">		Bitmap bitmap = BitmapFactory.decodeFile(path);</span><br><span class="line">		<span class="comment">// 软引用的Bitmap对象</span></span><br><span class="line">		SoftReference&lt;Bitmap&gt; softBitmap = <span class="keyword">new</span> SoftReference&lt;Bitmap&gt;(bitmap);</span><br><span class="line">		<span class="comment">// 添加该对象到Map中使其缓存</span></span><br><span class="line">		imageCache.put(path, softBitmap);</span><br><span class="line">		<span class="comment">// 使用完后手动将位图对象置null</span></span><br><span class="line">        bitmap = <span class="keyword">null</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="function"><span class="keyword">public</span> Bitmap <span class="title">getBitmapByPath</span><span class="params">(String path)</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">		<span class="comment">// 从缓存中取软引用的Bitmap对象</span></span><br><span class="line">		SoftReference&lt;Bitmap&gt; softBitmap = imageCache.get(path);</span><br><span class="line">		<span class="comment">// 判断是否存在软引用</span></span><br><span class="line">		<span class="keyword">if</span> (softBitmap == <span class="keyword">null</span>) &#123;</span><br><span class="line">			<span class="keyword">return</span> <span class="keyword">null</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">// 取出Bitmap对象，如果由于内存不足Bitmap被回收，将取得空</span></span><br><span class="line">		Bitmap bitmap = softBitmap.get();</span><br><span class="line">		<span class="keyword">return</span> bitmap;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>　　3、弱引用也是用来描述非必需对象的，当JVM进行垃圾回收时，无论内存是否充足，都会回收被弱引用关联的对象。在jdk1.2后，用WeakReference类来实现弱引用。弱引用与软引用的区别在于：只具有弱引用的对象拥有更短暂的生命周期。下面看一个简单例子:<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> java.lang.ref.WeakReference;</span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">WeakReferenceTest</span> </span>&#123;</span><br><span class="line">	<span class="function"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">main</span><span class="params">(String[] args)</span> </span>&#123;</span><br><span class="line">        WeakReference&lt;String&gt; sr ;</span><br><span class="line">        sr= <span class="keyword">new</span> WeakReference&lt;String&gt;(<span class="keyword">new</span> String(<span class="string">"弱引用"</span>));</span><br><span class="line">        System.out.println(sr.get());<span class="comment">//输出弱引用</span></span><br><span class="line">        System.gc();                <span class="comment">//通知JVM的gc进行垃圾回收</span></span><br><span class="line">        System.out.println(sr.get());<span class="comment">//输出null</span></span><br><span class="line">        <span class="comment">//如果存在强引用同时与之关联，则进行垃圾回收时也不会回收该对象</span></span><br><span class="line">        String str = <span class="keyword">new</span> String (<span class="keyword">new</span> String(<span class="string">"弱引用"</span>));</span><br><span class="line">        sr = <span class="keyword">new</span> WeakReference&lt;String&gt;(str);</span><br><span class="line">        System.gc();                <span class="comment">//通知JVM的gc进行垃圾回收</span></span><br><span class="line">        System.out.println(sr.get()); <span class="comment">//输出弱引用         </span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>　　4、虚引用和前面的软引用、弱引用不同，它并不影响对象的生命周期。在java中用java.lang.ref.PhantomReference类表示。如果一个对象与虚引用关联，则跟没有引用与之关联一样，在任何时候都可能被垃圾回收器回收。要注意的是，虚引用必须和引用队列关联使用，当垃圾回收器准备回收一个对象时，如果发现它还有虚引用，就会把这个虚引用加入到与之 关联的引用队列中。程序可以通过判断引用队列中是否已经加入了虚引用，来了解被引用的对象是否将要被垃圾回收。如果程序发现某个虚引用已经被加入到引用队列，那么就可以在所引用的对象的内存被回收之前采取必要的行动。<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> java.lang.ref.PhantomReference;</span><br><span class="line"><span class="keyword">import</span> java.lang.ref.ReferenceQueue;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">PhantomReferenceTest</span> </span>&#123;</span><br><span class="line">	<span class="function"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">main</span><span class="params">(String[] args)</span> </span>&#123;</span><br><span class="line">        ReferenceQueue&lt;String&gt; queue = <span class="keyword">new</span> ReferenceQueue&lt;String&gt;();</span><br><span class="line">        PhantomReference&lt;String&gt; pr = <span class="keyword">new</span> PhantomReference&lt;String&gt;(<span class="keyword">new</span> String(<span class="string">"虚引用"</span>), queue);</span><br><span class="line">        System.out.println(pr.get());<span class="comment">//输出null</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<h3 id="垃圾收集算法"><a href="#垃圾收集算法" class="headerlink" title="垃圾收集算法"></a>垃圾收集算法</h3><h4 id="标记-清除算法（Mark-Sweep）"><a href="#标记-清除算法（Mark-Sweep）" class="headerlink" title="标记-清除算法（Mark-Sweep）"></a>标记-清除算法（Mark-Sweep）</h4><p>　　标记-清除算法分为标记和清除两个阶段：首先标记出所有需要回收的对象，在标记完成后统一回收所有被标记的对象，标记过程其实就是根搜索算法判断对象是否存活。该算法主要不足有两个：一个是效率问题，标记和清除两个过程的效率都不高；另一个是空间问题，标记清除之后会产生大量不连续的内存碎片，空间碎片太多可能会导致以后在程序运行过程中需要分配较大的对象时，无法找到足够的连续内存而不得不提前触发另一次垃圾收集动作。标记-清除算法的执行过程如下图所示</p>
+<p> <img src="http://7xtmiv.com2.z0.glb.clouddn.com/%E6%A0%87%E8%AE%B0-%E6%B8%85%E9%99%A4.png"></p>
+<h4 id="复制算法（Coping）"><a href="#复制算法（Coping）" class="headerlink" title="复制算法（Coping）"></a>复制算法（Coping）</h4><p>　　复制算法是把内存分成大小相等的两块，每次使用其中一块，当垃圾回收的时候，把存活的对象复制到另一块上，然后把这块内存整个清理掉。这样使得每次都是对整个半区进行内存回收，内存分配时就不用考虑内存碎片等复杂情况，实现简单，运行高效。这种方法适用于短生存期的对象，持续复制长生存期的对象则导致效率降低。复制算法的执行过程如下图所示： </p>
+<p> <img src="http://7xtmiv.com2.z0.glb.clouddn.com/%E5%A4%8D%E5%88%B6.png"></p>
+<h4 id="标记-整理算法（Mark-Compact）"><a href="#标记-整理算法（Mark-Compact）" class="headerlink" title="标记-整理算法（Mark-Compact）"></a>标记-整理算法（Mark-Compact）</h4><p>　　复制算法在对象存活率较高时就要进行较多的复制操作，效率将会降低。老年代更常见的情况是大部分对象都是存活对象。如果依然使用复制算法，由于存活的对象较多，复制的成本也将很高。标记-整理算法是一种老年代的回收算法，该算法与标记-清除算法的标记过程一样，但是之后不是直接对可回收对象进行清理，而是让所有存活的对象都向一端移动，然后直接清理掉端边界以外的内存。这种方法既避免了碎片的产生，又不需要两块相同的内存空间，其性价比比较高。该算法示意图如下图所示：</p>
+<p> <img src="http://7xtmiv.com2.z0.glb.clouddn.com/%E6%A0%87%E8%AE%B0-%E6%95%B4%E7%90%86.png"></p>
+<h4 id="分代收集算法"><a href="#分代收集算法" class="headerlink" title="分代收集算法"></a>分代收集算法</h4><p>　　根据垃圾回收对象的特性，不同阶段最优的方式是使用合适的算法用于本阶段的垃圾回收，分代算法即是基于这种思想，它将内存区间根据对象的特点分成几块，根据每块内存区间的特点，使用不同的回收算法，以提高垃圾回收的效率。一般把java堆分为新生代和老年代，新生代采用复制算法，老年代采用标记-整理算法。</p>
+<h3 id="垃圾收集器"><a href="#垃圾收集器" class="headerlink" title="垃圾收集器"></a>垃圾收集器</h3><p>　　垃圾收集算法是内存回收的理论基础，而垃圾收集器就是内存回收的具体实现。下面介绍一下HotSpot（JDK 7)虚拟机提供的几种垃圾收集器，用户可以根据自己的需求组合出各个年代使用的收集器。HotSpot的虚拟机的垃圾收集器如下图所示：</p>
+<p>  <img src="http://7xtmiv.com2.z0.glb.clouddn.com/%E5%9E%83%E5%9C%BE%E6%94%B6%E9%9B%86%E5%99%A8.png"></p>
+<h4 id="Serial收集器"><a href="#Serial收集器" class="headerlink" title="Serial收集器"></a>Serial收集器</h4><p>　　这个收集器是一个单线程收集器，使用复制收集算法，收集时会暂停所有工作线程，直到收集结束，虚拟机运行在Client模式时的默认新生代收集器。 优点是：简单高效（与其他收集器的单线程相比），对于限定单个CPU的环境来说，Serial收集器没有现成交互的开销，做垃圾收集可以获得最高的单线程收集效率。如下图：</p>
+<p>Serial/Serial Old收集器运行示意图</p>
+<p> <img src="http://7xtmiv.com2.z0.glb.clouddn.com/serial.jpg"></p>
+<h4 id="ParNew收集器"><a href="#ParNew收集器" class="headerlink" title="ParNew收集器"></a>ParNew收集器</h4><p>　　ParNew收集器其实就是Serial收集器的多线程版本，除了使用多条线程进行垃圾收集之外，其余行为包括算法、STW、对象分配规则、回收策略等都与Serial收集器一样。ParNew收集器是许多运行在server模式下的虚拟机中首选的新生代收集器，一个重要原因是在除了serial收集器外，目前只有它能与CMS收集器配合使用。ParNew收集器在单CPU环境中不比Serial效果好，甚至可能更差，两个CPU也不一定跑的过，但随着CPU数量的增加，性能会逐步增加。ParNew收集器的工作过程如下：</p>
+<p>ParNew/Serial Old收集器运行示意图</p>
+<p> <img src="http://7xtmiv.com2.z0.glb.clouddn.com/ParNew.jpg"></p>
+<h4 id="Parallel-Scavenge-收集器"><a href="#Parallel-Scavenge-收集器" class="headerlink" title="Parallel Scavenge 收集器"></a>Parallel Scavenge 收集器</h4><p>　　Parallel Scavenge 收集器是一个新生代收集器，它是使用复制算法的并行多线程的收集器。<br>　　Parallel Scavenge的特点是它的关注点与其他收集器不同，CMS等收集器的关注点尽可能地缩短垃圾收集时用户线程的停顿时间，而Parallel Scavenge收集器的目标则是达到一个可控制的吞吐量（Throughput）。所谓吞吐量就是CPU用于运行用户代码时间与CPU总消耗时间的比值。吞吐量=运行用户代码时间/运行用户代码时间+垃圾收集时间。<br>　　高吞吐量和停顿时间短的策略相比，主要强调高效率地利用CPU时间，任务更快完成，适用于后台运算而不需要太多交互的任务；而后者强调用户交互体验。 </p>
+<h4 id="Serial-Old收集器"><a href="#Serial-Old收集器" class="headerlink" title="Serial Old收集器"></a>Serial Old收集器</h4><p>　　单线程收集器，是Serial收集器老年代版本，使用“标记-整理”算法，主要用在client模式下，如果在Server模式下，它主要有两大用途：一种用途是在JDK1.5以及之前的版本中与Parallel Scavenge 收集器搭配使用；另一用途是作为CMS收集器的后备预案，在并发手机发生CMF时使用。</p>
+<h4 id="Parallel-Old-收集器"><a href="#Parallel-Old-收集器" class="headerlink" title="Parallel Old 收集器"></a>Parallel Old 收集器</h4><p>　　Parallel Old是Parallel Scavenge收集器的老年代版本，使用多线程和“标记-整理”算法。</p>
+<p>  <img src="http://7xtmiv.com2.z0.glb.clouddn.com/parallel%20Scavenge.jpg"></p>
+<h4 id="CMS收集器"><a href="#CMS收集器" class="headerlink" title="CMS收集器"></a>CMS收集器</h4><p> CMS(Concurrent Mark Sweep)收集器是一种以获取最短回收停顿时间为目标的收集器。CMS收集器是基于“标记-清除”算法实现的，整个收集过程大致分为4个步骤：</p>
+<p>（1）初始标记（CMS initial mark）：标记GC Roots能直接关联到的对象，速度很快。<br>（2）并发标记（CMS concurrent mark）：进行GC ROOTS 根搜索算法阶段，会判定对象是否存活。<br>（3）重新标记（CMS remark）：修正并发标记期间因用户程序继续运行而导致标记发生改变的那一部分对象的标记记录。<br>（4）并发清除（CMS concurrent sweep）</p>
+<p>其中初始标记和重新标记两个阶段仍然需要Stop-The-World，整个过程中耗时最长的并发标记和并发清除过程中收集器都可以和用户线程一起工作。所以整体来说，CMS收集器的内存回收过程是与用户线程一起并发执行的。</p>
+<p>CMS收集器的优点：并发收集、低停顿，但是CMS还远远达不到完美，器主要有三个显著缺点：<br>（1）CMS收集器对CPU资源非常敏感。在并发阶段，虽然不会导致用户线程停顿，但是会占用CPU资源而导致引用程序变慢，总吞吐量下降。CMS默认启动的回收线程数是：(CPU数量+3) / 4。<br>（2）CMS收集器无法处理浮动垃圾，可能出现“Concurrent Mode Failure“，失败后而导致另一次Full  GC的产生。<br>（3）最后一个缺点，CMS是基于“标记-清除”算法实现的收集器，使用“标记-清除”算法收集后，会产生大量碎片。空间碎片太多时，将会给对象分配带来很多麻烦，比如说大对象，内存空间找不到连续的空间来分配不得不提前触发一次Full  GC。</p>
+<p> <img src="http://7xtmiv.com2.z0.glb.clouddn.com/cms.jpg"></p>
+<h4 id="G1收集器"><a href="#G1收集器" class="headerlink" title="G1收集器"></a>G1收集器</h4><p>G1收集器是一款面向服务端应用的垃圾收集器，用于替换CMS收集器。与其他GC收集器相比，G1具有以下几个特点：<br>（1）并行与并发：充分利用多CPU、多核环境下的硬件优势，使用多个CPU来缩短Stop-The-World停顿时间，在收集过程中用并发的方式让Java线程继续执行。<br>（2）分代收集：仍然有分代的概念，不需要其他收集器配合能独立管理整个GC堆，能够采用不同的方式去处理新创建的对象和已经存活了一段时间、熬过多次GC的就对象以获得更好的收集效果。<br>（3）空间整合：G1从整体看，是基于“标记-整理”算法实现的，从局部（两个Region之间）看是基于“复制”算法的。在运行期间不会产生内存碎片，有利于程序长时间运行分配大对象时不会因为无法找到连续内存而提前出发下一次GC。<br>（4）可预测的停顿：G1除了追求低停顿外，还能建立可预测的停顿时间模型。</p>
+<p>G1收集器运作大致可以分为以下几个步骤：<br>（1）初始标记：只标记GC Roots能直接关联到的对象，并且修改TAMS（Next Top at Mark Start）值，让下一阶段用户程序并发运行时，能在正确可用的Region中创建新对象。此阶段需要停顿用户线程。<br>（2）并发标记：从GC Roots开始对堆中对象进行可达性分析，找出存活对象；耗时较长，可与用户线程并发执行。<br>（3）最终标记：修正在并发标记期间有变动的标记记录，这阶段需要停顿线程，可以并行执行。<br>（4）筛选回收：对各个Region的回收价值和成本进行排序，根据用户期望的GC停顿时间制定回收计划，进行垃圾回收。</p>
+<p> <img src="http://7xtmiv.com2.z0.glb.clouddn.com/G1.jpg"></p>
+<p>注：本文主要参考《深入理解Java虚拟机》</p>
+  
+	</div>
+		<footer class="article-footer clearfix">
+<div class="article-catetags">
+
+<div class="article-categories">
+  <span></span>
+  <a class="article-category-link" href="/categories/JVM/">JVM</a>
+</div>
+
+
+  <div class="article-tags">
+  
+  <span></span> <a href="/tags/JVM/">JVM</a>
+  </div>
+
+</div>
+
+
+
+	<div class="article-share" id="share">
+	
+	  <div data-url="http://yoursite.com/2016/05/07/垃圾回收/" data-title="深入理解JVM之垃圾回收 | 挚爱左岸" data-tsina="null" class="share clearfix">
+	  </div>
+	
+	</div>
+
+
+</footer>
+
+   	       
+	</article>
+	
+<nav class="article-nav clearfix">
+ 
+ <div class="prev" >
+ <a href="/2016/05/08/工厂方法模式/" title="工厂方法模式">
+  <strong>上一篇：</strong><br/>
+  <span>
+  工厂方法模式</span>
+</a>
+</div>
+
+
+<div class="next">
+<a href="/2016/05/03/jvm内存区域和垃圾回收策略/"  title="深入理解JVM之内存区域和垃圾回收策略">
+ <strong>下一篇：</strong><br/> 
+ <span>深入理解JVM之内存区域和垃圾回收策略
+</span>
+</a>
+</div>
+
+</nav>
+
+	
+<section id="comments" class="comment">
+	<div class="ds-thread" data-thread-key="2016/05/07/垃圾回收/" data-title="深入理解JVM之垃圾回收" data-url="http://yoursite.com/2016/05/07/垃圾回收/"></div>
+</section>
+
+
+</div>  
+      <div class="openaside"><a class="navbutton" href="#" title="显示侧边栏"></a></div>
+
+  <div id="toc" class="toc-aside">
+  <strong class="toc-title">文章目录</strong>
+ 
+ <ol class="toc"><li class="toc-item toc-level-3"><a class="toc-link" href="#对象的判定"><span class="toc-number">1.</span> <span class="toc-text">对象的判定</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#引用的类型"><span class="toc-number">2.</span> <span class="toc-text">引用的类型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#垃圾收集算法"><span class="toc-number">3.</span> <span class="toc-text">垃圾收集算法</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#标记-清除算法（Mark-Sweep）"><span class="toc-number">3.1.</span> <span class="toc-text">标记-清除算法（Mark-Sweep）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#复制算法（Coping）"><span class="toc-number">3.2.</span> <span class="toc-text">复制算法（Coping）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#标记-整理算法（Mark-Compact）"><span class="toc-number">3.3.</span> <span class="toc-text">标记-整理算法（Mark-Compact）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#分代收集算法"><span class="toc-number">3.4.</span> <span class="toc-text">分代收集算法</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#垃圾收集器"><span class="toc-number">4.</span> <span class="toc-text">垃圾收集器</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#Serial收集器"><span class="toc-number">4.1.</span> <span class="toc-text">Serial收集器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#ParNew收集器"><span class="toc-number">4.2.</span> <span class="toc-text">ParNew收集器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Parallel-Scavenge-收集器"><span class="toc-number">4.3.</span> <span class="toc-text">Parallel Scavenge 收集器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Serial-Old收集器"><span class="toc-number">4.4.</span> <span class="toc-text">Serial Old收集器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Parallel-Old-收集器"><span class="toc-number">4.5.</span> <span class="toc-text">Parallel Old 收集器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#CMS收集器"><span class="toc-number">4.6.</span> <span class="toc-text">CMS收集器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#G1收集器"><span class="toc-number">4.7.</span> <span class="toc-text">G1收集器</span></a></li></ol></li></ol>
+ 
+  </div>
+
+<div id="asidepart">
+<div class="closeaside"><a class="closebutton" href="#" title="隐藏侧边栏"></a></div>
+<aside class="clearfix">
+
+  
+
+
+  
+<div class="categorieslist">
+	<p class="asidetitle">分类</p>
+		<ul>
+		
+		  
+			<li><a href="/categories/JVM/" title="JVM">JVM<sup>3</sup></a></li>
+		  
+		
+		  
+			<li><a href="/categories/排序算法/" title="排序算法">排序算法<sup>2</sup></a></li>
+		  
+		
+		  
+			<li><a href="/categories/设计模式/" title="设计模式">设计模式<sup>2</sup></a></li>
+		  
+		
+		</ul>
+</div>
+
+
+  
+<div class="tagslist">
+	<p class="asidetitle">标签</p>
+		<ul class="clearfix">
+		
+			
+				<li><a href="/tags/jvm/" title="jvm">jvm<sup>2</sup></a></li>
+			
+		
+			
+				<li><a href="/tags/排序/" title="排序">排序<sup>2</sup></a></li>
+			
+		
+			
+				<li><a href="/tags/设计模式、单例/" title="设计模式、单例">设计模式、单例<sup>1</sup></a></li>
+			
+		
+			
+				<li><a href="/tags/JVM/" title="JVM">JVM<sup>1</sup></a></li>
+			
+		
+			
+				<li><a href="/tags/设计模式、工厂方法/" title="设计模式、工厂方法">设计模式、工厂方法<sup>1</sup></a></li>
+			
+		
+		</ul>
+</div>
+
+
+  <div class="linkslist">
+  <p class="asidetitle">友情链接</p>
+    <ul>
+        
+          <li>
+            
+            	<a href="https://coderq.com" target="_blank" title="一个面向程序员交流分享的新一代社区">码农圈</a>
+            
+          </li>
+        
+          <li>
+            
+            	<a href="http://wuchong.me" target="_blank" title="Jark&#39;s Blog">Jark&#39;s Blog</a>
+            
+          </li>
+        
+    </ul>
+</div>
+
+  
+
+
+  <div class="rsspart">
+	<a href="/atom.xml" target="_blank" title="rss">RSS 订阅</a>
+</div>
+
+  <div class="weiboshow">
+  <p class="asidetitle">新浪微博</p>
+    <iframe width="100%" height="119" class="share_self"  frameborder="0" scrolling="no" src="http://widget.weibo.com/weiboshow/index.php?language=&width=0&height=119&fansRow=2&ptype=1&speed=0&skin=9&isTitle=1&noborder=1&isWeibo=0&isFans=0&uid=null&verifier=&dpc=1"></iframe>
+</div>
+
+
+</aside>
+</div>
+    </div>
+    <footer><div id="footer" >
+	
+	<div class="line">
+		<span></span>
+		<div class="author"></div>
+	</div>
+	
+	
+	<section class="info">
+		<p> Love life! Love coding! <br/>
+			爱生活！爱编码！</p>
+	</section>
+	 
+	<div class="social-font" class="clearfix">
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+	</div>
+			
+		
+
+		<p class="copyright">
+		Powered by <a href="http://hexo.io" target="_blank" title="hexo">hexo</a> and Theme by <a href="https://github.com/wuchong/jacman" target="_blank" title="Jacman">Jacman</a> © 2016 
+		
+		<a href="/about" target="_blank" title="Li Zhong Kai">Li Zhong Kai</a>
+		
+		
+		</p>
+</div>
+</footer>
+    <script src="/js/jquery-2.0.3.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+<script src="/js/jquery.qrcode-0.12.0.min.js"></script>
+
+<script type="text/javascript">
+$(document).ready(function(){ 
+  $('.navbar').click(function(){
+    $('header nav').toggleClass('shownav');
+  });
+  var myWidth = 0;
+  function getSize(){
+    if( typeof( window.innerWidth ) == 'number' ) {
+      myWidth = window.innerWidth;
+    } else if( document.documentElement && document.documentElement.clientWidth) {
+      myWidth = document.documentElement.clientWidth;
+    };
+  };
+  var m = $('#main'),
+      a = $('#asidepart'),
+      c = $('.closeaside'),
+      o = $('.openaside');
+  c.click(function(){
+    a.addClass('fadeOut').css('display', 'none');
+    o.css('display', 'block').addClass('fadeIn');
+    m.addClass('moveMain');
+  });
+  o.click(function(){
+    o.css('display', 'none').removeClass('beforeFadeIn');
+    a.css('display', 'block').removeClass('fadeOut').addClass('fadeIn');      
+    m.removeClass('moveMain');
+  });
+  $(window).scroll(function(){
+    o.css("top",Math.max(80,260-$(this).scrollTop()));
+  });
+  
+  $(window).resize(function(){
+    getSize(); 
+    if (myWidth >= 1024) {
+      $('header nav').removeClass('shownav');
+    }else{
+      m.removeClass('moveMain');
+      a.css('display', 'block').removeClass('fadeOut');
+      o.css('display', 'none');
+      
+      $('#toc.toc-aside').css('display', 'none');
+        
+    }
+  });
+});
+</script>
+
+<script type="text/javascript">
+$(document).ready(function(){ 
+  var ai = $('.article-content>iframe'),
+      ae = $('.article-content>embed'),
+      t  = $('#toc'),
+      ta = $('#toc.toc-aside'),
+      o  = $('.openaside'),
+      c  = $('.closeaside');
+  if(ai.length>0){
+    ai.wrap('<div class="video-container" />');
+  };
+  if(ae.length>0){
+   ae.wrap('<div class="video-container" />');
+  };
+  c.click(function(){
+    ta.css('display', 'block').addClass('fadeIn');
+  });
+  o.click(function(){
+    ta.css('display', 'none');
+  });
+  $(window).scroll(function(){
+    ta.css("top",Math.max(140,320-$(this).scrollTop()));
+  });
+});
+</script>
+
+
+<script type="text/javascript">
+$(document).ready(function(){ 
+  var $this = $('.share'),
+      url = $this.attr('data-url'),
+      encodedUrl = encodeURIComponent(url),
+      title = $this.attr('data-title'),
+      tsina = $this.attr('data-tsina'),
+      description = $this.attr('description');
+  var html = [
+  '<div class="hoverqrcode clearfix"></div>',
+  '<a class="overlay" id="qrcode"></a>',
+  '<a href="https://www.facebook.com/sharer.php?u=' + encodedUrl + '" class="article-share-facebook" target="_blank" title="Facebook"></a>',
+  '<a href="https://twitter.com/intent/tweet?url=' + encodedUrl + '" class="article-share-twitter" target="_blank" title="Twitter"></a>',
+  '<a href="#qrcode" class="article-share-qrcode" title="微信"></a>',
+  '<a href="http://widget.renren.com/dialog/share?resourceUrl=' + encodedUrl + '&srcUrl=' + encodedUrl + '&title=' + title +'" class="article-share-renren" target="_blank" title="人人"></a>',
+  '<a href="http://service.weibo.com/share/share.php?title='+title+'&url='+encodedUrl +'&ralateUid='+ tsina +'&searchPic=true&style=number' +'" class="article-share-weibo" target="_blank" title="微博"></a>',
+  '<span title="Share to"></span>'
+  ].join('');
+  $this.append(html);
+
+  $('.hoverqrcode').hide();
+
+  var myWidth = 0;
+  function updatehoverqrcode(){
+    if( typeof( window.innerWidth ) == 'number' ) {
+      myWidth = window.innerWidth;
+    } else if( document.documentElement && document.documentElement.clientWidth) {
+      myWidth = document.documentElement.clientWidth;
+    };
+    var qrsize = myWidth > 1024 ? 200:100;
+    var options = {render: 'image', size: qrsize, fill: '#2ca6cb', text: url, radius: 0.5, quiet: 1};
+    var p = $('.article-share-qrcode').position();
+    $('.hoverqrcode').empty().css('width', qrsize).css('height', qrsize)
+                          .css('left', p.left-qrsize/2+20).css('top', p.top-qrsize-10)
+                          .qrcode(options);
+  };
+  $(window).resize(function(){
+    $('.hoverqrcode').hide();
+  });
+  $('.article-share-qrcode').click(function(){
+    updatehoverqrcode();
+    $('.hoverqrcode').toggle();
+  });
+  $('.article-share-qrcode').hover(function(){}, function(){
+      $('.hoverqrcode').hide();
+  });
+});   
+</script>
+
+
+
+<script type="text/javascript">
+  var duoshuoQuery = {short_name:"lizhongkai0924"};
+  (function() {
+    var ds = document.createElement('script');
+    ds.type = 'text/javascript';ds.async = true;
+    ds.src = '//static.duoshuo.com/embed.js';
+    ds.charset = 'UTF-8';
+    (document.getElementsByTagName('head')[0] 
+    || document.getElementsByTagName('body')[0]).appendChild(ds);
+  })();
+</script> 
+
+
+
+
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+$(document).ready(function(){ 
+  $('.article-content').each(function(i){
+    $(this).find('img').each(function(){
+      if ($(this).parent().hasClass('fancybox')) return;
+      var alt = this.alt;
+      if (alt) $(this).after('<span class="caption">' + alt + '</span>');
+      $(this).wrap('<a href="' + this.src + '" title="' + alt + '" class="fancybox"></a>');
+    });
+    $(this).find('.fancybox').each(function(){
+      $(this).attr('rel', 'article' + i);
+    });
+  });
+  if($.fancybox){
+    $('.fancybox').fancybox();
+  }
+}); 
+</script>
+
+
+
+<!-- Analytics Begin -->
+
+
+
+<script>
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "//hm.baidu.com/hm.js?e6d1f421bbc9962127a50488f9ed37d1";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+
+<!-- Analytics End -->
+
+<!-- Totop Begin -->
+
+	<div id="totop">
+	<a title="返回顶部"><img src="/img/scrollup.png"/></a>
+	</div>
+	<script src="/js/totop.js"></script>
+
+<!-- Totop End -->
+
+<!-- MathJax Begin -->
+<!-- mathjax config similar to math.stackexchange -->
+
+
+<!-- MathJax End -->
+
+<!-- Tiny_search Begin -->
+
+<!-- Tiny_search End -->
+
+  </body>
+</html>
